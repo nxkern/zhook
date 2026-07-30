@@ -7,3 +7,9 @@ build/
 build-*/
 docgen_tmp/
 
+
+# nix
+.direnv/
+.envrc
+!.envrc.template
+
