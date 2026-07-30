@@ -1,0 +1,9 @@
+.direnv
+.git
+.zig-cache
+zig-out
+.envrc
+.envrc.template
+.gitignore
+flake.lock
+flake.nix

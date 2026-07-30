@@ -9,7 +9,6 @@ const Route = struct {
     handle: Handler,
 };
 
-
 const routes = [_]Route{
     .{ .method = .GET, .path = "/api", .handle = barrel.handleHome },
     .{ .method = .GET, .path = "/api/cd", .handle = barrel.HandleCD },
@@ -24,15 +23,19 @@ pub fn dispatch(req: *std.http.Server.Request) !void {
     try req.respond("404 Not Found\n", .{ .status = .not_found });
 }
 
-pub fn Server(init: std.process.Init) !void {
+const jsonTest = "{\"username\": \"zig_user\"}";
+
+pub fn ServerListen(init: std.process.Init, running: std.atomic.Value(bool)) !void {
     const io = init.io;
     const net = std.Io.net;
     const address = net.IpAddress;
-    const ip = try net.IpAddress.parse("127.0.0.1", 8080);
-    var server_listener = try address.listen(&ip, io, .{});
-    std.debug.print("Server listening in {s}\n", .{"127.0.0.1:8080"});
+    const ip = try net.IpAddress.parse("127.0.0.1", 8088);
+    var server_listener = try address.listen(&ip, io, .{
+        .reuse_address = true,
+    });
+    std.debug.print("Server listening in {s}\n", .{"127.0.0.1:8088"});
 
-    while (true) {
+    while (running.load(.acquire)) {
         var buf: [1024]u8 = undefined;
         var stream = try server_listener.accept(io);
         defer stream.close(io);
@@ -45,4 +48,26 @@ pub fn Server(init: std.process.Init) !void {
 
         try dispatch(&req);
     }
+}
+
+pub fn NewRequest(init: std.process.Init, url: []const u8, method: std.http.Method, headers: []const std.http.Header, payload: ?[]const u8) struct { ?std.http.Client.FetchResult, std.http.Status } {
+    const io = init.io;
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const uri = std.Uri.parse(url) catch return .{ null, .bad_request };
+
+    var client: std.http.Client = .{
+        .allocator = allocator,
+        .io = io,
+    };
+    defer client.deinit();
+    const result = client.fetch(.{
+        .location = .{ .uri = uri },
+        .method = method,
+        .extra_headers = headers,
+        .payload = payload,
+    }) catch return .{ null,  .service_unavailable };
+
+    return .{ result, result.status };
 }
