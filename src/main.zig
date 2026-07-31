@@ -6,7 +6,11 @@ pub const config = .{
     .env = @import("config/env.zig"),
 };
 
-var running: std.atomic.Value(bool) = std.atomic.Value(bool).init(true);
+pub const customTypes = .{
+    .json = @import("types/json.zig"),
+};
+
+pub var running: std.atomic.Value(bool) = std.atomic.Value(bool).init(true);
 
 fn handleSignal(sig: std.posix.SIG) callconv(.c) void {
     _ = sig;
@@ -15,6 +19,9 @@ fn handleSignal(sig: std.posix.SIG) callconv(.c) void {
 
 pub fn main(init: std.process.Init) !void {
     var dbg_alloc = if (builtin.mode == .Debug) std.heap.DebugAllocator(.{}){};
+    var stdout_buf: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buf);
+    const stdout = &stdout_writer.interface;
     const envsSystem = init.environ_map;
     const envMod = @import("~").config.env;
     const ENV = envMod.ENV;
@@ -35,10 +42,16 @@ pub fn main(init: std.process.Init) !void {
     std.posix.sigaction(std.posix.SIG.TERM, &act, null);
     std.posix.sigaction(std.posix.SIG.INT, &act, null);
 
-    if (try ENV.initEnv(envsSystem)) |configEnv| {
+    if (ENV.initEnv(envsSystem)) |configEnv| {
         var envs = configEnv.getEnvs();
-        const thread1 = try std.Thread.spawn(.{}, server.Ticker, .{ init, envs.URI, allocator });
-        const thread2 = try std.Thread.spawn(.{}, server.ServerListen, .{ init, running, allocator, &envs });
+        const thread1 = try std.Thread.spawn(.{}, server.Ticker, .{
+            init,
+            envs.URI,
+            allocator,
+        });
+        const thread2 = try std.Thread.spawn(.{}, server.ServerListen, .{
+            init, allocator, &envs, stdout,
+        });
         while (running.load(.acquire)) {
             try std.Io.sleep(init.io, std.Io.Duration.fromMilliseconds(50), std.Io.Clock.awake);
         }
@@ -47,7 +60,6 @@ pub fn main(init: std.process.Init) !void {
         thread1.detach();
         thread2.detach();
     }
-    std.debug.print("\nGood Bye\n", .{});
+    try stdout.print("\nGood Bye\n", .{});
+    try stdout.flush();
 }
-
-

@@ -1,5 +1,5 @@
 const std = @import("std");
-const barrel = @import("./handlers/index.zig");
+const barrel = @import("handlers/index.zig");
 const rootSrc = @import("~");
 
 const Handler = *const fn (
@@ -34,9 +34,9 @@ pub fn dispatch(
 
 pub fn ServerListen(
     init: std.process.Init,
-    running: std.atomic.Value(bool),
     allocator: std.mem.Allocator,
     environMap: *const rootSrc.config.env.ENV,
+    stdout: *std.Io.Writer,
 ) !void {
     const io = init.io;
     const net = std.Io.net;
@@ -45,9 +45,10 @@ pub fn ServerListen(
     var server_listener = try address.listen(&ip, io, .{
         .reuse_address = true,
     });
-    std.debug.print("Server listening in 127.0.0.1:8088\n", .{});
+    try stdout.print("Server listening in 127.0.0.1:8088\n", .{});
+    try stdout.flush();
 
-    while (running.load(.acquire)) {
+    while (rootSrc.running.load(.acquire)) {
         var buf: [1024]u8 = undefined;
         var stream = try server_listener.accept(io);
         defer stream.close(io);
@@ -62,7 +63,17 @@ pub fn ServerListen(
     }
 }
 
-pub fn NewRequest(init: std.process.Init, allocatorMem: std.mem.Allocator, url: []const u8, method: std.http.Method, headers: []const std.http.Header, payload: ?[]const u8) struct { ?std.http.Client.FetchResult, std.http.Status } {
+pub fn NewRequest(
+    init: std.process.Init,
+    allocatorMem: std.mem.Allocator,
+    url: []const u8,
+    method: std.http.Method,
+    headers: []const std.http.Header,
+    payload: ?[]const u8,
+) struct {
+    ?std.http.Client.FetchResult,
+    std.http.Status,
+} {
     const io = init.io;
     var arena = std.heap.ArenaAllocator.init(allocatorMem);
     defer arena.deinit();
@@ -83,11 +94,10 @@ pub fn NewRequest(init: std.process.Init, allocatorMem: std.mem.Allocator, url: 
 
     return .{ result, result.status };
 }
-fn Ticker(
+pub fn Ticker(
     init: std.process.Init,
     uri: ?[]const u8,
     allocator: std.mem.Allocator,
-    running: std.atomic.Value(bool),
 ) !void {
     const method: std.http.Method = .POST;
     var count: u8 = 0;
@@ -101,7 +111,7 @@ fn Ticker(
         .{ .name = "content-type", .value = "application/json" },
     };
     const payload = "{\"username\": \"zig_user\"}";
-    while (running.load(.acquire)) {
+    while (rootSrc.running.load(.acquire)) {
         const value, const status = NewRequest(init, allocator, url, method, headers, payload);
         switch (@intFromEnum(status)) {
             @intFromEnum(std.http.Status.service_unavailable) => {

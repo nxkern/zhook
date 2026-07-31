@@ -9,7 +9,16 @@ pub fn HandleCD(
     env: *const rootSrc.config.env.ENV,
 ) !void {
     const headers = req.head_buffer;
+    const types = rootSrc.customTypes;
+
     var lines = std.mem.tokenizeSequence(u8, headers, "\r\n");
+
+    var jsonResponde: types.json.tokenJson = undefined;
+
+    var buffJson: [1024]u8 = undefined;
+    var out: std.Io.Writer = .fixed(&buffJson);
+    var w: std.json.Stringify = .{ .writer = &out, .options = .{} };
+
     while (lines.next()) |line| {
         if (line.len == 0) break;
         if (std.mem.startsWith(u8, line, "Authorization: ") or std.mem.startsWith(u8, line, "authorization: ")) {
@@ -17,9 +26,27 @@ pub fn HandleCD(
             if (auth_value.len > 7 and std.mem.startsWith(u8, auth_value, "Bearer ")) {
                 const token = auth_value[7..];
                 if (std.mem.eql(u8, token, env.TOKEN)) {
-                    std.debug.print("token correct\n", .{});
+
                 } else {
-                    std.debug.print("token incorrect\n", .{});
+                    jsonResponde = types.json.tokenJson{
+                        .data = error.incorrectToken,
+                    };
+
+                    try w.beginObject();
+                    inline for (@typeInfo(@TypeOf(jsonResponde)).@"struct".fields) |key| {
+                        try w.objectField(key.name);
+                        if (@field(jsonResponde, key.name)) |_| {} else |err| {
+                            try w.print("{s}", .{@errorName(err)});
+                        }
+                    }
+                    try w.endObject();
+                    try req.respond(out.buffered(), .{
+                        .status = .unauthorized,
+                        .extra_headers = &.{
+                            .{ .name = "content-type", .value = "apllication/json" },
+                        },
+                    });
+                    return;
                 }
             }
         }
