@@ -1,7 +1,12 @@
 const std = @import("std");
 const barrel = @import("./handlers/index.zig");
+const rootSrc = @import("~");
 
-const Handler = *const fn (req: *std.http.Server.Request) anyerror!void;
+const Handler = *const fn (
+    req: *std.http.Server.Request,
+    allocator: std.mem.Allocator,
+    env: *const rootSrc.config.env.ENV,
+) anyerror!void;
 
 const Route = struct {
     method: std.http.Method,
@@ -11,20 +16,28 @@ const Route = struct {
 
 const routes = [_]Route{
     .{ .method = .GET, .path = "/api", .handle = barrel.handleHome },
-    .{ .method = .GET, .path = "/api/cd", .handle = barrel.HandleCD },
+    .{ .method = .POST, .path = "/api/cd", .handle = barrel.HandleCD },
 };
 
-pub fn dispatch(req: *std.http.Server.Request) !void {
+pub fn dispatch(
+    req: *std.http.Server.Request,
+    allocator: std.mem.Allocator,
+    env: *const rootSrc.config.env.ENV,
+) !void {
     for (routes) |route| {
         if (route.method == req.head.method and std.mem.eql(u8, route.path, req.head.target)) {
-            return try route.handle(req);
+            return try route.handle(req, allocator, env);
         }
     }
     try req.respond("404 Not Found\n", .{ .status = .not_found });
 }
 
-
-pub fn ServerListen(init: std.process.Init, running: std.atomic.Value(bool)) !void {
+pub fn ServerListen(
+    init: std.process.Init,
+    running: std.atomic.Value(bool),
+    allocator: std.mem.Allocator,
+    environMap: *const rootSrc.config.env.ENV,
+) !void {
     const io = init.io;
     const net = std.Io.net;
     const address = net.IpAddress;
@@ -45,7 +58,7 @@ pub fn ServerListen(init: std.process.Init, running: std.atomic.Value(bool)) !vo
         var http_server = std.http.Server.init(&reader.interface, &writter.interface);
         var req = try http_server.receiveHead();
 
-        try dispatch(&req);
+        try dispatch(&req, allocator, environMap);
     }
 }
 
@@ -66,7 +79,48 @@ pub fn NewRequest(init: std.process.Init, allocatorMem: std.mem.Allocator, url: 
         .method = method,
         .extra_headers = headers,
         .payload = payload,
-    }) catch return .{ null,  .service_unavailable };
+    }) catch return .{ null, .service_unavailable };
 
     return .{ result, result.status };
+}
+fn Ticker(
+    init: std.process.Init,
+    uri: ?[]const u8,
+    allocator: std.mem.Allocator,
+    running: std.atomic.Value(bool),
+) !void {
+    const method: std.http.Method = .POST;
+    var count: u8 = 0;
+    var buff: [100]u8 = undefined;
+    const url: []const u8 = if (uri) |unwrap_uri|
+        try std.fmt.bufPrint(&buff, "{s}/heartbeat", .{unwrap_uri})
+    else
+        return;
+
+    const headers: []const std.http.Header = &.{
+        .{ .name = "content-type", .value = "application/json" },
+    };
+    const payload = "{\"username\": \"zig_user\"}";
+    while (running.load(.acquire)) {
+        const value, const status = NewRequest(init, allocator, url, method, headers, payload);
+        switch (@intFromEnum(status)) {
+            @intFromEnum(std.http.Status.service_unavailable) => {
+                count += 1;
+                if (count >= 5) try barrel.Disconnect(init, status);
+            },
+            400...499 => std.debug.print("status code: {d}\n", .{@intFromEnum(status)}),
+            200...299 => {
+                if (value) |res| {
+                    if (count != 0) count = 0;
+                    std.debug.print("{d}\n", .{@intFromEnum(res.status)});
+                }
+            },
+            else => {
+                std.debug.print("error", .{});
+                return;
+            },
+        }
+        if (count >= 5) count = 0;
+        try std.Io.sleep(init.io, std.Io.Duration.fromSeconds(5), std.Io.Clock.awake);
+    }
 }
