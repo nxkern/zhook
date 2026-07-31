@@ -23,7 +23,6 @@ pub fn dispatch(req: *std.http.Server.Request) !void {
     try req.respond("404 Not Found\n", .{ .status = .not_found });
 }
 
-const jsonTest = "{\"username\": \"zig_user\"}";
 
 pub fn ServerListen(init: std.process.Init, running: std.atomic.Value(bool)) !void {
     const io = init.io;
@@ -33,7 +32,7 @@ pub fn ServerListen(init: std.process.Init, running: std.atomic.Value(bool)) !vo
     var server_listener = try address.listen(&ip, io, .{
         .reuse_address = true,
     });
-    std.debug.print("Server listening in {s}\n", .{"127.0.0.1:8088"});
+    std.debug.print("Server listening in 127.0.0.1:8088\n", .{});
 
     while (running.load(.acquire)) {
         var buf: [1024]u8 = undefined;
@@ -50,9 +49,9 @@ pub fn ServerListen(init: std.process.Init, running: std.atomic.Value(bool)) !vo
     }
 }
 
-pub fn NewRequest(init: std.process.Init, url: []const u8, method: std.http.Method, headers: []const std.http.Header, payload: ?[]const u8) struct { ?std.http.Client.FetchResult, std.http.Status } {
+pub fn NewRequest(init: std.process.Init, allocatorMem: std.mem.Allocator, url: []const u8, method: std.http.Method, headers: []const std.http.Header, payload: ?[]const u8) struct { ?std.http.Client.FetchResult, std.http.Status } {
     const io = init.io;
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(allocatorMem);
     defer arena.deinit();
     const allocator = arena.allocator();
     const uri = std.Uri.parse(url) catch return .{ null, .bad_request };

@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const server = @import("./server/server.zig");
 
 var running: std.atomic.Value(bool) = std.atomic.Value(bool).init(true);
@@ -16,11 +17,18 @@ const ENV = struct {
 fn handleSignal(sig: std.posix.SIG) callconv(.c) void {
     _ = sig;
     running.store(false, .release);
-    std.debug.print("\nGood Bye\n", .{});
-    std.process.exit(0);
 }
 
 pub fn main(init: std.process.Init) !void {
+    var dbg_alloc = if (builtin.mode == .Debug) std.heap.DebugAllocator(.{}){};
+    defer {
+        if (builtin.mode == .Debug) {
+            const check = dbg_alloc.deinit();
+            if (check == .leak) std.debug.print("memory leak: ", .{});
+        }
+    }
+    const allocator = if (builtin.mode == .Debug) dbg_alloc.allocator() else std.heap.page_allocator;
+
     const act = std.posix.Sigaction{
         .handler = .{ .handler = handleSignal },
         .mask = std.posix.sigemptyset(),
@@ -33,23 +41,33 @@ pub fn main(init: std.process.Init) !void {
     const envs = try ENV.initEnv(init, .{
         .URI = "URI_SERVER",
     });
-    const thread1 = try std.Thread.spawn(.{}, Ticker, .{ init, envs.?.URI });
+    const thread1 = try std.Thread.spawn(.{}, Ticker, .{ init, envs.?.URI, allocator });
     const thread2 = try std.Thread.spawn(.{}, server.ServerListen, .{ init, running });
-    thread1.join();
-    thread2.join();
+    while (running.load(.acquire)) {
+        try std.Io.sleep(init.io, std.Io.Duration.fromMilliseconds(50), std.Io.Clock.awake);
+    }
+    try std.Io.sleep(init.io, std.Io.Duration.fromMilliseconds(100), std.Io.Clock.awake);
+
+    thread1.detach();
+    thread2.detach();
+    std.debug.print("\nGood Bye\n", .{});
 }
 
-fn Ticker(init: std.process.Init, uri: ?[]const u8) !void {
+fn Ticker(init: std.process.Init, uri: ?[]const u8, allocator: std.mem.Allocator) !void {
     const method: std.http.Method = .POST;
     var buff: [100]u8 = undefined;
-    const base_uri = uri orelse "http://localhost:8080";
-    const url = try std.fmt.bufPrint(&buff, "{s}/heartbeat", .{base_uri});
+    var url: []const u8 = undefined;
+    if (uri) |unwrap_uri| {
+        url = try std.fmt.bufPrint(&buff, "{s}/heartbeat", .{unwrap_uri});
+    } else {
+        return;
+    }
     const headers: []const std.http.Header = &.{
         .{ .name = "content-type", .value = "application/json" },
     };
     const payload = "{\"username\": \"zig_user\"}";
     while (running.load(.acquire)) {
-        const value, const status = server.NewRequest(init, url, method, headers, payload);
+        const value, const status = server.NewRequest(init, allocator, url, method, headers, payload);
         try switch (@intFromEnum(status)) {
             @intFromEnum(std.http.Status.service_unavailable) => handleDisconnect(),
             400...499 => std.debug.print("status code: {d}\n", .{@intFromEnum(status)}),
@@ -68,5 +86,5 @@ fn Ticker(init: std.process.Init, uri: ?[]const u8) !void {
 }
 
 fn handleDisconnect() !void {
-    std.debug.print("Hola mundo\n", .{});
+    std.debug.print("Disconnect\n", .{});
 }
