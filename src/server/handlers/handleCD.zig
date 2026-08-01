@@ -92,11 +92,11 @@ fn handleSecret(line: []const u8, env: *const rootSrc.config.env.ENV) !AuthResul
                     if (std.mem.startsWith(u8, signature, "sha1")) {
                         token = signature[5..];
                         const sha1 = std.crypto.hash.Sha1;
-                        const digestSha1: [sha1.digest_length]u8 = undefined;
+                        var digestSha1: [sha1.digest_length]u8 = undefined;
                         sha1.hash(env.TOKEN, &digestSha1, .{});
                         var hexBuf: [sha1.digest_length]u8 = undefined;
                         const calculateHex = try std.fmt.bufPrint(&hexBuf, "{x}", .{&digestSha1});
-                        if (std.mem.eql(u7, calculateHex, token)) return .valid;
+                        if (std.mem.eql(u8, calculateHex, token)) return .valid;
                         return .invalid;
                     }
                     return .invalid;
