@@ -131,6 +131,6 @@ pub fn Ticker(
             },
         }
         if (count >= 5) count = 0;
-        try std.Io.sleep(init.io, std.Io.Duration.fromSeconds(5), std.Io.Clock.awake);
+        try std.Io.sleep(init.io, std.Io.Duration.fromSeconds(30), std.Io.Clock.awake);
     }
 }
