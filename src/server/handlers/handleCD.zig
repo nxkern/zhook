@@ -24,7 +24,6 @@ pub fn HandleCD(
     env: *const rootSrc.config.env.ENV,
 ) !void {
     const headers = req.head_buffer;
-    _ = allocator;
 
     var lines = std.mem.tokenizeSequence(u8, headers, "\r\n");
 
@@ -35,9 +34,13 @@ pub fn HandleCD(
     var w: std.json.Stringify = .{ .writer = &out, .options = .{} };
     var value: bool = false;
 
+    const data = req.readerExpectNone(&.{});
+    const buffJsonData = try data.allocRemaining(allocator, .unlimited);
+    defer allocator.free(buffJsonData);
+
     while (lines.next()) |line| {
         if (line.len == 0) break;
-        value = try processAuth(line, env, &jsonResponde, &w, req, &out);
+        value = try processAuth(line, env, &jsonResponde, &w, req, &out, buffJsonData);
         if (value) break;
     }
     if (!value) {
@@ -56,9 +59,9 @@ fn handleBearer(line: []const u8, env: *const rootSrc.config.env.ENV) !AuthResul
     }
     return .invalid;
 }
-fn handleSecret(line: []const u8, env: *const rootSrc.config.env.ENV) !AuthResult {
-    const sha256 = std.crypto.hash.sha2.Sha256;
-    var digest: [sha256.digest_length]u8 = undefined;
+fn handleSecret(line: []const u8, env: *const rootSrc.config.env.ENV, json: []const u8) !AuthResult {
+    const sha256 = std.crypto.auth.hmac.sha2.HmacSha256;
+    var digest: [sha256.mac_length]u8 = undefined;
     const isHeaderSecret = std.mem.startsWith(u8, line, "X-") or
         std.mem.startsWith(u8, line, "x-");
     if (!isHeaderSecret) return .noAuth;
@@ -78,25 +81,24 @@ fn handleSecret(line: []const u8, env: *const rootSrc.config.env.ENV) !AuthResul
                     var token: []const u8 = undefined;
                     if (std.mem.startsWith(u8, headerRest[11..], "256")) {
                         signature = headerRest[16..];
-                        std.debug.print("{s}", .{signature});
                         if (std.mem.startsWith(u8, signature, "sha256")) {
                             token = signature[7..];
-                            sha256.hash(env.TOKEN, &digest, .{});
-                            var hexBuf: [sha256.digest_length]u8 = undefined;
-                            const calculateHex = try std.fmt.bufPrint(&hexBuf, "{x}", .{&digest});
-                            if (std.mem.eql(u8, calculateHex, token)) return .valid;
+                            sha256.create(&digest, json, env.TOKEN);
+                            var hexBuf: [sha256.mac_length]u8 = undefined;
+                            const calculateHex = try std.fmt.hexToBytes(&hexBuf, token[0..64]);
+                            if (std.mem.eql(u8, &digest, calculateHex)) return .valid;
                             return .invalid;
                         }
                     }
                     signature = headerRest[12..];
                     if (std.mem.startsWith(u8, signature, "sha1")) {
                         token = signature[5..];
-                        const sha1 = std.crypto.hash.Sha1;
-                        var digestSha1: [sha1.digest_length]u8 = undefined;
-                        sha1.hash(env.TOKEN, &digestSha1, .{});
-                        var hexBuf: [sha1.digest_length]u8 = undefined;
-                        const calculateHex = try std.fmt.bufPrint(&hexBuf, "{x}", .{&digestSha1});
-                        if (std.mem.eql(u8, calculateHex, token)) return .valid;
+                        const sha1 = std.crypto.auth.hmac.HmacSha1;
+                        var digestSha1: [sha1.mac_length]u8 = undefined;
+                        sha1.create(&digestSha1, json, env.TOKEN);
+                        var hexBuf: [sha1.mac_length]u8 = undefined;
+                        const calculateHex = try std.fmt.hexToBytes(&hexBuf, token[0..40]);
+                        if (std.mem.eql(u8, &digestSha1, calculateHex)) return .valid;
                         return .invalid;
                     }
                     return .invalid;
@@ -117,6 +119,7 @@ fn processAuth(
     w: *std.json.Stringify,
     req: *std.http.Server.Request,
     out: *std.Io.Writer,
+    json: []const u8,
 ) !bool {
     switch (try handleBearer(line, env)) {
         .valid => {
@@ -129,9 +132,15 @@ fn processAuth(
         },
         .noAuth => {},
     }
-    switch (try handleSecret(line, env)) {
-        .valid => {},
-        .invalid => {},
+    switch (try handleSecret(line, env, json)) {
+        .valid => {
+            std.debug.print("correct token\n", .{});
+            return true;
+        },
+        .invalid => {
+            try utils.SendJsonWrong(jsonResponde, w, req, out);
+            return true;
+        },
         .noAuth => {},
     }
     return false;
