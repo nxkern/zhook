@@ -41,11 +41,11 @@ pub fn ServerListen(
     const io = init.io;
     const net = std.Io.net;
     const address = net.IpAddress;
-    const ip = try net.IpAddress.parse("127.0.0.1", 8088);
+    const ip = try net.IpAddress.parse("0.0.0.0", 8088);
     var server_listener = try address.listen(&ip, io, .{
         .reuse_address = true,
     });
-    try stdout.print("Server listening in 127.0.0.1:8088\n", .{});
+    try stdout.print("Server listening in 0.0.0.0:8088\n", .{});
     try stdout.flush();
 
     while (rootSrc.running.load(.acquire)) {

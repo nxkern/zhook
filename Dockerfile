@@ -7,8 +7,8 @@ RUN zig build -Doptimize=ReleaseSmall -Dtarget=x86_64-linux-musl -Dcpu=baseline
 
 FROM scratch AS runner
 WORKDIR /app
-ENV URI_SERVER="http://locahost:3000"
-ENV TOKEN_CD=""
+ENV URI_SERVER=http://locahost:3000
+ENV TOKEN_CD=
 COPY --from=builder /app/zig-out ./zig-out
 EXPOSE 8088
 CMD ["./zig-out/bin/zhook"]
