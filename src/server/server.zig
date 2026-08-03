@@ -49,7 +49,7 @@ pub fn ServerListen(
     try stdout.flush();
 
     while (rootSrc.running.load(.acquire)) {
-        var buf: [1024]u8 = undefined;
+        var buf: [16384]u8 = undefined;
         var stream = try server_listener.accept(io);
         defer stream.close(io);
 
