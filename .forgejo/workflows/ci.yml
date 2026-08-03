@@ -1,0 +1,36 @@
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: codeberg-small
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install buildah
+        run: |
+          sudo apt-get update
+          supo apt-get install -y buildah
+      - name: Log in docker 
+        run: |
+          echo "${{ secrets.REGISTRY_TOKEN }}" | buildah login docker.io -u "${{ secrets.REGISTRY_USER }}" --password-stdin
+      - name: Build Image
+        run: |
+          VERSION=$(echo "${{ github.ref_name }}" | sed "s/^v//")
+          buildah build \
+            --storage-driver=vfs \
+            --isolation=chroot \
+            -t docker.io/nxusdev21/zhook:latest \
+            -t docker.io/nxusdev21/zhook:$VERSION \
+            -f ./Dockerfile
+      - name: Push to Docker.io
+        run: |
+          VERSION=$(echo "${{ github.ref_name }}" | sed "s/^v//")
+          buildah push \
+            --storage-driver=vfs \
+            docker.io/nxusdev21/zhook:$VERSION 
+          buildah push \
+            --storage-driver=vfs \
+            docker.io/nxusdev21/zhook:latest
