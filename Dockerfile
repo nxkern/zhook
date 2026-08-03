@@ -1,4 +1,4 @@
-FROM kassany/alpine-ziglang:0.16.0 AS builder
+FROM docker.io/kassany/alpine-ziglang:0.16.0 AS builder
 WORKDIR /app
 ENV ZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache
 COPY --chown=ziguana:ziguana . .
