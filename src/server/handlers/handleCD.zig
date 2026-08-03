@@ -96,8 +96,10 @@ fn handleSecret(
     const startHeader = line[2..];
     var headerRest: []const u8 = undefined;
     var platformShort: []const u8 = undefined;
+
+    var buf: [30]u8 = undefined;
+
     if (std.mem.indexOf(u8, startHeader, "-")) |index| {
-        var buf: [30]u8 = undefined;
         platformShort = std.ascii.lowerString(&buf, startHeader[0..index]);
         headerRest = startHeader[index..];
     } else {
@@ -106,29 +108,29 @@ fn handleSecret(
     if (std.meta.stringToEnum(platformSignatureHeader, platformShort)) |platf| {
         switch (platf) {
             .hub => {
-                if (std.mem.startsWith(u8, headerRest[1..], "Signature")) {
+                if (std.ascii.startsWithIgnoreCase(headerRest[1..], "Signature")) {
                     var signature: []const u8 = undefined;
                     var token: []const u8 = undefined;
-                    if (std.mem.startsWith(u8, headerRest[11..], "256")) {
+                    if (std.ascii.startsWithIgnoreCase(headerRest[11..], "256")) {
                         signature = headerRest[16..];
-                        if (std.mem.startsWith(u8, signature, "sha256")) {
+                        if (std.ascii.startsWithIgnoreCase(signature, "sha256")) {
                             token = signature[7..];
                             sha256.create(&digest, json, env.TOKEN);
                             var hexBuf: [sha256.mac_length]u8 = undefined;
                             const calculateHex = try std.fmt.hexToBytes(&hexBuf, token[0..64]);
-                            if (std.mem.eql(u8, &digest, calculateHex)) return .valid;
+                            if (std.ascii.eqlIgnoreCase(&digest, calculateHex)) return .valid;
                             return .invalid;
                         }
                     }
                     signature = headerRest[12..];
-                    if (std.mem.startsWith(u8, signature, "sha1")) {
+                    if (std.ascii.startsWithIgnoreCase(signature, "sha1")) {
                         token = signature[5..];
                         const sha1 = std.crypto.auth.hmac.HmacSha1;
                         var digestSha1: [sha1.mac_length]u8 = undefined;
                         sha1.create(&digestSha1, json, env.TOKEN);
                         var hexBuf: [sha1.mac_length]u8 = undefined;
                         const calculateHex = try std.fmt.hexToBytes(&hexBuf, token[0..40]);
-                        if (std.mem.eql(u8, &digestSha1, calculateHex)) return .valid;
+                        if (std.ascii.eqlIgnoreCase(&digestSha1, calculateHex)) return .valid;
                         return .invalid;
                     }
                     return .invalid;
