@@ -2,7 +2,7 @@ FROM docker.io/kassany/alpine-ziglang:0.16.0 AS builder
 WORKDIR /app
 ENV ZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache
 COPY --chown=ziguana:ziguana . .
-RUN zig build -Doptimize=ReleaseSmall 
+RUN zig build -Doptimize=ReleaseSmall -Dtarget=x86_64-linux-musl -Dcpu=baseline 
 
 
 FROM scratch AS runner
