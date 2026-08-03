@@ -11,9 +11,12 @@ const AuthResult = enum {
 };
 const platformSignatureHeader = enum {
     hub,
-    gitea,
-    forgejo,
     gitlab,
+};
+const payloadGl = struct {
+    id: []const u8,
+    signature: []const u8,
+    timestamp: []const u8,
 };
 
 const types = rootSrc.customTypes;
@@ -34,17 +37,37 @@ pub fn HandleCD(
     var w: std.json.Stringify = .{ .writer = &out, .options = .{} };
     var value: bool = false;
 
+    // gitlab
+    var glId: []const u8 = undefined;
+    var glTt: []const u8 = undefined;
+    var glSn: []const u8 = undefined;
+    var platformGl: []const u8 = undefined;
+
     const data = req.readerExpectNone(&.{});
     const buffJsonData = try data.allocRemaining(allocator, .unlimited);
     defer allocator.free(buffJsonData);
 
     while (lines.next()) |line| {
         if (line.len == 0) break;
-        value = try processAuth(line, env, &jsonResponde, &w, req, &out, buffJsonData);
+        value = try processAuth(line, env, &jsonResponde, &w, req, &out, buffJsonData, null);
         if (value) break;
     }
     if (!value) {
-        std.debug.print("unsopporter headers\n", .{});
+        while (lines.next()) |line| {
+            if (line.len == 0) break;
+            if (std.mem.startsWith(u8, line, "webhook-signature")) glSn = line[3..];
+            if (std.mem.startsWith(u8, line, "webhook-id")) glId = line;
+            if (std.mem.startsWith(u8, line, "webhook-timestamp")) glTt = line;
+            if (std.mem.startsWith(u8, line, "x-gitlab-event-uuid")) platformGl = "gitlab";
+            break;
+        }
+        const payload = payloadGl{
+            .id = glId,
+            .timestamp = glTt,
+            .signature = glSn,
+        };
+        value = try processAuth(platformGl, env, &jsonResponde, &w, req, &out, buffJsonData, payload);
+        if (!value) std.debug.print("unsopporter headers\n", .{});
     }
 }
 
@@ -59,7 +82,12 @@ fn handleBearer(line: []const u8, env: *const rootSrc.config.env.ENV) !AuthResul
     }
     return .invalid;
 }
-fn handleSecret(line: []const u8, env: *const rootSrc.config.env.ENV, json: []const u8) !AuthResult {
+fn handleSecret(
+    line: []const u8,
+    env: *const rootSrc.config.env.ENV,
+    json: []const u8,
+    payloadInfo: ?payloadGl,
+) !AuthResult {
     const sha256 = std.crypto.auth.hmac.sha2.HmacSha256;
     var digest: [sha256.mac_length]u8 = undefined;
     const isHeaderSecret = std.mem.startsWith(u8, line, "X-") or
@@ -72,6 +100,8 @@ fn handleSecret(line: []const u8, env: *const rootSrc.config.env.ENV, json: []co
         var buf: [30]u8 = undefined;
         platformShort = std.ascii.lowerString(&buf, startHeader[0..index]);
         headerRest = startHeader[index..];
+    } else {
+        platformShort = line;
     }
     if (std.meta.stringToEnum(platformSignatureHeader, platformShort)) |platf| {
         switch (platf) {
@@ -104,9 +134,21 @@ fn handleSecret(line: []const u8, env: *const rootSrc.config.env.ENV, json: []co
                     return .invalid;
                 }
             },
-            .gitea => {},
-            .forgejo => {},
-            .gitlab => {},
+            .gitlab => {
+                const token: []const u8 = payloadInfo.?.signature[20..];
+                const timestamp: []const u8 = payloadInfo.?.timestamp[17..];
+                const id: []const u8 = payloadInfo.?.id[10..];
+
+                var buffGl: [2048]u8 = undefined;
+
+                const payload = try std.fmt.bufPrint(&buffGl, "{s}.{s}.{s}", .{ id, timestamp, json });
+
+                sha256.create(&digest, payload, env.TOKEN);
+                var hexBuf: [sha256.mac_length]u8 = undefined;
+                const calculateHex = try std.fmt.hexToBytes(&hexBuf, token[0..64]);
+                if (std.mem.eql(u8, &digest, calculateHex)) return .valid;
+                return .invalid;
+            },
         }
     }
     return .noAuth;
@@ -120,6 +162,7 @@ fn processAuth(
     req: *std.http.Server.Request,
     out: *std.Io.Writer,
     json: []const u8,
+    payload: ?payloadGl,
 ) !bool {
     switch (try handleBearer(line, env)) {
         .valid => {
@@ -132,7 +175,7 @@ fn processAuth(
         },
         .noAuth => {},
     }
-    switch (try handleSecret(line, env, json)) {
+    switch (try handleSecret(line, env, json, payload)) {
         .valid => {
             std.debug.print("correct token\n", .{});
             return true;
