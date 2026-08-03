@@ -12,7 +12,7 @@ jobs:
       - name: Install buildah
         run: |
           sudo apt-get update
-          supo apt-get install -y buildah
+          sudo apt-get install -y buildah
       - name: Log in docker 
         run: |
           echo "${{ secrets.REGISTRY_TOKEN }}" | buildah login docker.io -u "${{ secrets.REGISTRY_USER }}" --password-stdin
