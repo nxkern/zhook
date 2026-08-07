@@ -25,6 +25,7 @@ pub fn HandleCD(
     req: *std.http.Server.Request,
     allocator: std.mem.Allocator,
     env: *const rootSrc.config.env.ENV,
+    io: std.Io,
 ) !void {
     const headers = req.head_buffer;
 
@@ -49,7 +50,18 @@ pub fn HandleCD(
 
     while (lines.next()) |line| {
         if (line.len == 0) break;
-        value = try processAuth(line, env, &jsonResponde, &w, req, &out, buffJsonData, null);
+        value = try processAuth(
+            line,
+            env,
+            &jsonResponde,
+            &w,
+            req,
+            &out,
+            buffJsonData,
+            null,
+            allocator,
+            io,
+        );
         if (value) break;
     }
     if (!value) {
@@ -66,7 +78,18 @@ pub fn HandleCD(
             .timestamp = glTt,
             .signature = glSn,
         };
-        value = try processAuth(platformGl, env, &jsonResponde, &w, req, &out, buffJsonData, payload);
+        value = try processAuth(
+            platformGl,
+            env,
+            &jsonResponde,
+            &w,
+            req,
+            &out,
+            buffJsonData,
+            payload,
+            allocator,
+            io,
+        );
         if (!value) std.debug.print("unsopporter headers\n", .{});
     }
 }
@@ -165,6 +188,8 @@ fn processAuth(
     out: *std.Io.Writer,
     json: []const u8,
     payload: ?payloadGl,
+    allocator: std.mem.Allocator,
+    io: std.Io,
 ) !bool {
     switch (try handleBearer(line, env)) {
         .valid => {
@@ -180,6 +205,7 @@ fn processAuth(
     switch (try handleSecret(line, env, json, payload)) {
         .valid => {
             std.debug.print("correct token\n", .{});
+            _ = try utils.Container(allocator, io);
             return true;
         },
         .invalid => {

@@ -6,6 +6,7 @@ const Handler = *const fn (
     req: *std.http.Server.Request,
     allocator: std.mem.Allocator,
     env: *const rootSrc.config.env.ENV,
+    io: std.Io,
 ) anyerror!void;
 
 const Route = struct {
@@ -23,10 +24,11 @@ pub fn dispatch(
     req: *std.http.Server.Request,
     allocator: std.mem.Allocator,
     env: *const rootSrc.config.env.ENV,
+    io: std.Io,
 ) !void {
     for (routes) |route| {
         if (route.method == req.head.method and std.mem.eql(u8, route.path, req.head.target)) {
-            return try route.handle(req, allocator, env);
+            return try route.handle(req, allocator, env, io);
         }
     }
     try req.respond("404 Not Found\n", .{ .status = .not_found });
@@ -47,7 +49,6 @@ pub fn ServerListen(
     });
     try stdout.print("Server listening in 0.0.0.0:8088\n", .{});
     try stdout.flush();
-
     while (rootSrc.running.load(.acquire)) {
         var buf: [16384]u8 = undefined;
         var stream = try server_listener.accept(io);
@@ -59,7 +60,7 @@ pub fn ServerListen(
         var http_server = std.http.Server.init(&reader.interface, &writter.interface);
         var req = try http_server.receiveHead();
 
-        try dispatch(&req, allocator, environMap);
+        try dispatch(&req, allocator, environMap, io);
     }
 }
 
