@@ -205,7 +205,8 @@ fn processAuth(
     switch (try handleSecret(line, env, json, payload)) {
         .valid => {
             std.debug.print("correct token\n", .{});
-            _ = try utils.Container(allocator, io);
+            const target = "~";
+            _ = try utils.Container(allocator, io, env, target);
             return true;
         },
         .invalid => {

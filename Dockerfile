@@ -11,6 +11,7 @@ FROM scratch AS runner
 WORKDIR /app
 ENV URI_SERVER=http://locahost:3000
 ENV TOKEN_CD=
+ENV DOCKER_HOST=unix:///var/container/containerEngine.sock
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /app/zig-out ./zig-out
 EXPOSE 8088
