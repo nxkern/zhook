@@ -13,3 +13,5 @@ docgen_tmp/
 .envrc
 !.envrc.template
 
+# nvim
+pulse_debug.log
