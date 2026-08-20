@@ -2,7 +2,12 @@ const std = @import("std");
 const rootSrc = @import("~");
 const utils = @import("utils/index.zig");
 
-const UserTest = struct { usuario: []const u8, id: u32, activo: bool };
+const customTypes = rootSrc.customTypes;
+
+const WebhookPayload = union(enum) {
+    github: customTypes.json.PayloadGithub,
+    gitea: customTypes.json.PayloadGitea,
+};
 
 const AuthResult = enum {
     valid,
@@ -217,3 +222,5 @@ fn processAuth(
     }
     return false;
 }
+
+fn setJson() !WebhookPayload {}
