@@ -6,17 +6,12 @@ const ContainerEngine = enum {
     err,
     noContainerEngine,
 };
-const ContainerIs = enum {
-    podman,
-    docker,
-    noContainer,
-};
 
 pub fn Container(
     allocator: std.mem.Allocator,
     io: std.Io,
     env: *const rootSrc.config.env.ENV,
-    target: []const u8,
+    target: []u8,
 ) !void {
     var buffPath: [1024]u8 = undefined;
     const pathComplete = try std.fmt.bufPrint(&buffPath, "{s}/{s}", .{ env.APPS, target });

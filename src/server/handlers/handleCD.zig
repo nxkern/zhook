@@ -210,8 +210,10 @@ fn processAuth(
     switch (try handleSecret(line, env, json, payload)) {
         .valid => {
             std.debug.print("correct token\n", .{});
-            const target = "~";
-            _ = try utils.Container(allocator, io, env, target);
+            const target = try setJson(allocator, json);
+            defer allocator.free(target);
+            std.debug.print("container activate\n", .{});
+            try utils.Container(allocator, io, env, target);
             return true;
         },
         .invalid => {
@@ -223,4 +225,32 @@ fn processAuth(
     return false;
 }
 
-fn setJson() !WebhookPayload {}
+fn setJson(allocator: std.mem.Allocator, json: []const u8) ![]u8 {
+    const parsedGt = try std.json.parseFromSlice(
+        customTypes.json.PayloadGitea,
+        allocator,
+        json,
+        .{
+            .ignore_unknown_fields = true,
+        },
+    );
+    defer parsedGt.deinit();
+    const resultGt: customTypes.json.PayloadGitea = parsedGt.value;
+    if (resultGt.repository.owner.login_name != null) {
+        const repoName: []u8 = try allocator.dupe(u8, resultGt.repository.name);
+        return repoName;
+    }
+    parsedGt.deinit();
+    const parsedGh = try std.json.parseFromSlice(
+        customTypes.json.PayloadGithub,
+        allocator,
+        json,
+        .{
+            .ignore_unknown_fields = true,
+        },
+    );
+    defer parsedGh.deinit();
+    const resultGh: customTypes.json.PayloadGithub = parsedGh.value;
+    const repoName: []u8 = try allocator.dupe(u8, resultGh.repository.name);
+    return repoName;
+}

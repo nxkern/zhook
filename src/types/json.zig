@@ -9,7 +9,7 @@ pub const PayloadGitea = struct {
 const repositoryGitea = struct {
     id: u64,
     owner: ownerGitea,
-    name: []const u8,
+    name: []u8,
     full_name: []const u8,
     description: []const u8,
     private: bool,
@@ -24,16 +24,16 @@ const repositoryGitea = struct {
 };
 
 const ownerGitea = struct {
-    login_name: []const u8,
+    login_name: ?[]const u8,
 };
 
 pub const PayloadGithub = struct {
-    respository: repositoryGithub,
+    repository: repositoryGithub,
 };
 
 const repositoryGithub = struct {
     id: u64,
-    name: []const u8,
+    name: []u8,
     full_name: []const u8,
     private: bool,
     html_url: []const u8,
