@@ -16,21 +16,32 @@ jobs:
       - name: Log in docker 
         run: |
           echo "${{ secrets.REGISTRY_TOKEN }}" | buildah login docker.io -u "${{ secrets.REGISTRY_USER }}" --password-stdin
-      - name: Build Image
+      - name: Build Image (AMD64)
         run: |
-          VERSION=$(echo "${{ github.ref_name }}" | sed "s/^v//")
           buildah build \
             --storage-driver=vfs \
             --isolation=chroot \
-            -t docker.io/nxusdev21/zhook:latest \
-            -t docker.io/nxusdev21/zhook:$VERSION \
-            -f ./Dockerfile
+            -t zhook-tmp:amd64 \
+            -f ./Dockerfile .
+      - name: Build Image (ARM64)
+        run: |
+          buildah build \
+            --storage-driver=vfs \
+            --isolation=chroot \
+            --build-arg ZIG_TARGET=aarch64-linux-musl \
+            --build-arg DOCKER_ARCH=aarch64 \
+            -t zhook-tmp:arm64 \
+            -f ./Dockerfile .
       - name: Push to Docker.io
         run: |
           VERSION=$(echo "${{ github.ref_name }}" | sed "s/^v//")
-          buildah push \
-            --storage-driver=vfs \
-            docker.io/nxusdev21/zhook:$VERSION 
-          buildah push \
-            --storage-driver=vfs \
-            docker.io/nxusdev21/zhook:latest
+          buildah --storage-driver=vfs \
+            manifest create zhook-multi:$VERSION
+          buildah --storage-driver=vfs \
+            manifest add zhook-multi:$VERSION zhook-tmp:amd64
+          buildah --storage-driver=vfs \
+            manifest add --arch arm64 zhook-multi:$VERSION zhook-tmp:arm64
+          buildah --storage-driver=vfs \
+            manifest push --all zhook-multi:$VERSION docker://docker.io/nxusdev21/zhook:$VERSION
+          buildah --storage-driver=vfs \
+            manifest push --all zhook-multi:$VERSION docker://docker.io/nxusdev21/zhook:latest
