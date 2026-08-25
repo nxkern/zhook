@@ -208,9 +208,28 @@ fn processAuth(
     )) {
         .valid => {
             std.debug.print("correct token\n", .{});
+            jsonResponde.* = types.json.tokenJson{
+                .data = "correct token, process up"
+            };
+            
+
             const target = try setJson(allocator, json);
             defer allocator.free(target);
-            std.debug.print("container activate\n", .{});
+            try w.*.beginObject();
+            inline for (@typeInfo(@TypeOf(jsonResponde.*)).@"struct".fields) |key| {
+                try w.*.objectField(key.name);
+                if(@field(jsonResponde.*, key.name)) |_| {} else |err| {
+                    try w.*.print("{s}", .{@errorName(err)});
+                }
+            }
+            try w.endObject();
+            try req.*.respond(out.*.buffered(),.{
+                .status = .accepted,
+                .extra_headers = &.{
+                    .{ .name = "content-type", .value = "application/json"}
+                },
+            });
+
             try utils.Container(allocator, io, env, target);
             return true;
         },
