@@ -127,7 +127,7 @@ pub fn Ticker(
                 }
             },
             else => {
-                std.debug.print("error", .{});
+                std.debug.print("error\n", .{});
                 return;
             },
         }
