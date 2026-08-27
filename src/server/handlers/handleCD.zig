@@ -143,7 +143,6 @@ fn handleSecret(
 
     // Process hash sha256
     {
-        std.debug.print("hola sha256", .{});
         var digest: [sha256.mac_length]u8 = undefined;
         sha256.create(&digest, json, env.TOKEN);
         var hexBuf: [sha256.mac_length]u8 = undefined;
@@ -153,7 +152,6 @@ fn handleSecret(
 
     // Process hash sha1
     if (!valid) {
-        std.debug.print("hola sha1", .{});
         var digest: [sha1.mac_length]u8 = undefined;
         sha1.create(&digest, json, env.TOKEN);
         var hexBuf: [sha1.mac_length]u8 = undefined;
@@ -207,18 +205,18 @@ fn processAuth(
         json,
     )) {
         .valid => {
-            std.debug.print("correct token\n", .{});
             jsonResponde.* = types.json.tokenJson{
                 .data = "correct token, process up"
             };
-            
 
             const target = try setJson(allocator, json);
             defer allocator.free(target);
             try w.*.beginObject();
             inline for (@typeInfo(@TypeOf(jsonResponde.*)).@"struct".fields) |key| {
                 try w.*.objectField(key.name);
-                if(@field(jsonResponde.*, key.name)) |_| {} else |err| {
+                if(@field(jsonResponde.*, key.name)) |value| {
+                    try w.*.write(value);
+                } else |err| {
                     try w.*.print("{s}", .{@errorName(err)});
                 }
             }
