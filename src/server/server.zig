@@ -127,8 +127,7 @@ pub fn Ticker(
                 }
             },
             else => {
-                std.debug.print("error\n", .{});
-                return;
+                std.debug.print("error send ticker\n", .{});
             },
         }
         if (count >= 5) count = 0;
