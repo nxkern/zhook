@@ -58,9 +58,14 @@ pub fn ServerListen(
         var writter = stream.writer(io, &buf);
 
         var http_server = std.http.Server.init(&reader.interface, &writter.interface);
-        var req = try http_server.receiveHead();
-
-        try dispatch(&req, allocator, environMap, io);
+        while (true) {
+            var req = http_server.receiveHead() catch break;
+            dispatch(&req, allocator, environMap, io) catch |e| {
+                std.debug.print("handler error: {s}\n", .{@errorName(e)});
+                req.respond("error", .{ .status = .internal_server_error }) catch {};
+            };
+        }
+        stream.close(io);
     }
 }
 
