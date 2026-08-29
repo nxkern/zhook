@@ -207,7 +207,6 @@ fn processAuth(
         valueHeader,
         env,
         json,
-        allocator,
     )) {
         .valid => {
             jsonResponde.* = types.json.tokenJson{ .data = "correct token, process up" };
