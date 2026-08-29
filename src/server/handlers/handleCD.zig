@@ -5,11 +5,11 @@ const utils = @import("utils/index.zig");
 const customTypes = rootSrc.customTypes;
 
 const headersSupporter = [_][]const u8{
-    "X-Hub-Signature",
-    "X-Hub-Signature-256",
-    "X-Gitea-Signature",
-    "X-Gogs-Signature",
-    "X-Forgejo-Signature",
+    "x-hub-signature",
+    "x-hub-signature-256",
+    "x-gitea-signature",
+    "x-gogs-signature",
+    "x-forgejo-signature",
 };
 
 const headersGitlab = [_][]const u8{
@@ -67,15 +67,18 @@ pub fn HandleCD(
     {
         while (it.next()) |header| {
             var found: bool = false;
+            var bufLower: [1024]u8 = undefined;
+            const lowerName = std.ascii.lowerString(&bufLower, header.name);
             for (headersSupporter) |head| {
-                if (std.mem.eql(u8, header.name, head)) found = true;
+                if (std.mem.eql(u8, lowerName, head)) found = true;
                 if (found) {
+                    std.debug.print("[log-zhook] equals {s} == {s}\n", .{ head, lowerName });
                     contentHeader = header.value;
                     break;
                 }
-                if (std.mem.eql(u8, header.name, "webhook_id")) idGitlab = header.value;
-                if (std.mem.eql(u8, header.name, "webhook_timestamp")) timestampGitlab = header.value;
-                if (std.mem.eql(u8, header.name, "webhook-timestamp ")) contentHeader = header.value;
+                if (std.mem.eql(u8, lowerName, "webhook_id")) idGitlab = header.value;
+                if (std.mem.eql(u8, lowerName, "webhook_timestamp")) timestampGitlab = header.value;
+                if (std.mem.eql(u8, lowerName, "webhook-timestamp ")) contentHeader = header.value;
             }
         }
     }
@@ -162,16 +165,16 @@ fn handleSecret(
     // process hash gitlab sha256
     if (!valid) {
         var bufMessage: [300]u8 = undefined;
-        const message = try std.fmt.bufPrint(&bufMessage, "{?s}.{?s}.{s}", .{gitlabData.?.webhook_id, gitlabData.?.webhook_timestamp, json});
+        const message = try std.fmt.bufPrint(&bufMessage, "{?s}.{?s}.{s}", .{ gitlabData.?.webhook_id, gitlabData.?.webhook_timestamp, json });
         var digest: [sha256.mac_length]u8 = undefined;
-         sha256.create(&digest, message, env.TOKEN);
+        sha256.create(&digest, message, env.TOKEN);
         var hexBuf: [sha256.mac_length]u8 = undefined;
         const calculateHex = try std.fmt.hexToBytes(&hexBuf, token.?);
         if (std.ascii.eqlIgnoreCase(&digest, calculateHex)) valid = true;
     }
 
     if (valid) return .valid;
-    if(!valid) return .invalid;
+    if (!valid) return .invalid;
     return .noAuth;
 }
 
@@ -205,27 +208,23 @@ fn processAuth(
         json,
     )) {
         .valid => {
-            jsonResponde.* = types.json.tokenJson{
-                .data = "correct token, process up"
-            };
+            jsonResponde.* = types.json.tokenJson{ .data = "correct token, process up" };
 
             const target = try setJson(allocator, json);
             defer allocator.free(target);
             try w.*.beginObject();
             inline for (@typeInfo(@TypeOf(jsonResponde.*)).@"struct".fields) |key| {
                 try w.*.objectField(key.name);
-                if(@field(jsonResponde.*, key.name)) |value| {
+                if (@field(jsonResponde.*, key.name)) |value| {
                     try w.*.write(value);
                 } else |err| {
                     try w.*.print("{s}", .{@errorName(err)});
                 }
             }
             try w.endObject();
-            try req.*.respond(out.*.buffered(),.{
+            try req.*.respond(out.*.buffered(), .{
                 .status = .accepted,
-                .extra_headers = &.{
-                    .{ .name = "content-type", .value = "application/json"}
-                },
+                .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
             });
 
             try utils.Container(allocator, io, env, target);
