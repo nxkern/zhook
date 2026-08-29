@@ -70,11 +70,12 @@ pub fn HandleCD(
             var bufLower: [1024]u8 = undefined;
             const lowerName = std.ascii.lowerString(&bufLower, header.name);
             for (headersSupporter) |head| {
-                if (std.mem.eql(u8, lowerName, head)) found = true;
-                if (found) {
-                    std.debug.print("[log-zhook] equals {s} == {s}\n", .{ head, lowerName });
+                if (found) break;
+                if (std.mem.eql(u8, lowerName, head)) {
+                    found = true;
                     contentHeader = header.value;
-                    break;
+                    std.debug.print("[log-zhook] equals {s} == {s}\n", .{ head, lowerName });
+                    std.debug.print("[log-zhook] value equals {s} == {s}", .{contentHeader, header.value});
                 }
                 if (std.mem.eql(u8, lowerName, "webhook_id")) idGitlab = header.value;
                 if (std.mem.eql(u8, lowerName, "webhook_timestamp")) timestampGitlab = header.value;
@@ -133,6 +134,7 @@ fn handleSecret(
     valueHeader: []const u8,
     env: *const rootSrc.config.env.ENV,
     json: []const u8,
+    allocator: std.mem.Allocator,
 ) !AuthResult {
     const sha256 = std.crypto.auth.hmac.sha2.HmacSha256;
     const sha1 = std.crypto.auth.hmac.HmacSha1;
@@ -148,7 +150,8 @@ fn handleSecret(
     {
         var digest: [sha256.mac_length]u8 = undefined;
         sha256.create(&digest, json, env.TOKEN);
-        var hexBuf: [sha256.mac_length]u8 = undefined;
+        var hexBuf: [sha256.mac_length]u8 = try allocator.alloc(u8, token.?.len);
+        defer allocator.free(hexBuf);
         const calculateHex = try std.fmt.hexToBytes(&hexBuf, token.?);
         if (std.ascii.eqlIgnoreCase(&digest, calculateHex)) valid = true;
     }
@@ -157,8 +160,9 @@ fn handleSecret(
     if (!valid) {
         var digest: [sha1.mac_length]u8 = undefined;
         sha1.create(&digest, json, env.TOKEN);
-        var hexBuf: [sha1.mac_length]u8 = undefined;
-        const calculateHex = try std.fmt.hexToBytes(&hexBuf, token.?);
+        var hexBuf: [sha1.mac_length]u8 = try allocator.alloc(u8, token.?.len);
+        defer allocator.free(hexBuf);
+        const calculateHex = try std.fmt.hexToBytes(&hexBuf, token.?[0..20]);
         if (std.ascii.eqlIgnoreCase(&digest, calculateHex)) valid = true;
     }
 
@@ -168,7 +172,8 @@ fn handleSecret(
         const message = try std.fmt.bufPrint(&bufMessage, "{?s}.{?s}.{s}", .{ gitlabData.?.webhook_id, gitlabData.?.webhook_timestamp, json });
         var digest: [sha256.mac_length]u8 = undefined;
         sha256.create(&digest, message, env.TOKEN);
-        var hexBuf: [sha256.mac_length]u8 = undefined;
+        var hexBuf: [sha256.mac_length]u8 = try allocator.alloc(u8, token.?.len);
+        defer allocator.free(hexBuf);
         const calculateHex = try std.fmt.hexToBytes(&hexBuf, token.?);
         if (std.ascii.eqlIgnoreCase(&digest, calculateHex)) valid = true;
     }
@@ -206,6 +211,7 @@ fn processAuth(
         valueHeader,
         env,
         json,
+        allocator,
     )) {
         .valid => {
             jsonResponde.* = types.json.tokenJson{ .data = "correct token, process up" };
